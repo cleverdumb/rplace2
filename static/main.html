@@ -1,0 +1,194 @@
+<html>
+    <head>
+        <title>r/place</title>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    </head>
+    <body>
+        <div id='gameplay' hidden>
+            <canvas id='cvs'></canvas>
+            <input id='gameplayColor' type='color'>
+            <p id='cd'></p>
+        </div>
+        <div id='login'>
+            <input type='text' name='cuser' id='cuser' placeholder='username' required />
+            <br>
+            <input type='text' name='cpass' id='cpass' placeholder='password' required />
+            <br>
+            <button id='create' onclick='create()'>Create account</button>
+            <hr>
+            <input type='text' name='luser' id='luser' placeholder='username' required />
+            <br>
+            <input type='text' name='lpass' id='lpass' placeholder='username' required />
+            <br>
+            <button id='login' onclick='login()'>Login</button>
+            <hr>
+            <p id='respondTxt'></p>
+        </div>
+        <br>
+        <button id='signout' onclick='signout()' hidden>Signout</button>
+        <script>
+            const cvs = document.getElementById('cvs');
+            const ctx = cvs.getContext('2d');
+
+            cvs.width = 600;
+            cvs.height = 600;
+            cvs.style.border = '1px solid black';
+
+            let boxSize = 12;
+            let offSetX = 0;
+            let offSetY = 0;
+
+            if (sessionStorage.getItem('$rplace_session')) {
+                loginSession();
+            }
+
+            function login() {
+                let user = document.getElementById('luser').value;
+                let pass = document.getElementById('lpass').value;
+                $.ajax({
+                    url:`${window.location.origin}/login`,
+                    data:{user:user,pass:pass},
+                    type:'POST',
+                    dataType:'json',
+                    success: function(response) {
+                        if (response.status=='success') {
+                            $('#respondTxt').html('Login success');
+                            sessionStorage.setItem('$rplace_session',response.session);
+                            $('#login').hide();
+                            $('#signout').show();
+                            $('#gameplay').show();
+                        }
+                        else {
+                            $('#respondTxt').html('Wrong username or password');
+                        }
+                    },
+                    error:(error) => console.log("request error:" + JSON.stringify(error)),
+                })
+            }
+
+            function loginSession() {
+                $.ajax({
+                    url:`${window.location.origin}/loginSession`,
+                    data:{session:sessionStorage.getItem('$rplace_session')},
+                    type:'POST',
+                    dataType:'json',
+                    success:res=>{
+                        if (res.status=='success') {
+                            $('#respondTxt').html('Auto login success');
+                            $('#login').hide();
+                            $('#signout').show();
+                            $('#gameplay').show();
+                        }
+                        else {
+                            $('#respondTxt').html('Session doesn\'t work for some reason.... Hmmmmmm..... Sus....  ඞඞඞ');
+                        }
+                    }
+                })
+            }
+
+            function create() {
+                let user = document.getElementById('cuser').value;
+                let pass = document.getElementById('cpass').value;
+                $.ajax({
+                    url:`${window.location.origin}/create`,
+                    data:{user:user,pass:pass},
+                    type:'POST',
+                    dataType:'json',
+                    success:(data)=>{
+                        if (data.status=='success') {
+                            $('#respondTxt').html('Account creation successful, please login now');
+                        }
+                        else {
+                            $('#respondTxt').html('Username taken. Please login or choose a new one');
+                        }
+                    },
+                    fail:(jqXHR)=>{
+                        console.log('fail');
+                        console.log(jqXHR);
+                    }
+                })
+            }
+
+            function signout() {
+                sessionStorage.removeItem('$rplace_session');
+                window.location.reload();
+                $('#signout').hide();
+                $('#gameplay').hide();
+            }
+            
+            function turnBlock(x,y,color) {
+                $.ajax({
+                    url:`${window.location.origin}/turnBlock`,
+                    data:{x:x,y:y,color:color,session:sessionStorage.getItem('$rplace_session')},
+                    type:'POST',
+                    dataType:'text',
+                    success:(data)=>{
+                        let jdata = JSON.parse(data);
+                        // console.log(jdata)
+                        drawGrid(jdata[1]);
+                        // console.log(jdata[2]);
+                        // console.log(jdata[0].status);
+                        if (jdata[0].status!='success') {
+                            alert('cooldown');
+                            sessionStorage.setItem('$rplace_cd',jdata[2]);
+                        }
+                        else {
+                            sessionStorage.setItem('$rplace_cd',Date.now().toString());
+                        }
+                    },
+                    fail:(jqXHR)=>{
+                        console.log(jqXHR);
+                    }
+                })
+            }
+
+            function getGrid() {
+                $.ajax({
+                    url:`${window.location.origin}/getGrid`,
+                    type:'GET',
+                    dataType:'text',
+                    success:(data)=>{
+                        drawGrid(JSON.parse(data));
+                    },
+                    fail:(jqXHR)=>{
+                        console.log(jqXHR);
+                    }
+                })
+            }
+
+            function drawGrid(jdata) {
+                ctx.clearRect(0,0,cvs.width,cvs.height);
+                jdata.forEach((y,yi)=>{
+                    y.forEach((x,xi)=>{
+                        ctx.save();
+                        ctx.translate(offSetX,offSetY);
+                        ctx.fillStyle = x;
+                        ctx.fillRect(xi*boxSize,yi*boxSize,boxSize,boxSize);
+                        ctx.strokeStyle = 'black';
+                        ctx.strokeRect(xi*boxSize,yi*boxSize,boxSize,boxSize);
+                        ctx.restore();
+                    })
+                })
+            }
+
+            cvs.addEventListener('mousedown',(e)=>{
+                let posX = Math.floor((e.clientX - cvs.getBoundingClientRect().left)/boxSize);
+                let posY = Math.floor((e.clientY - cvs.getBoundingClientRect().top)/boxSize);
+                turnBlock(posX,posY,$('#gameplayColor').val());
+            })
+
+            function updateCd() {
+                let cd = parseInt(sessionStorage.getItem('$rplace_cd'))
+                document.getElementById('cd').innerText = Math.floor(Math.max(20000 - Math.max(Date.now()-cd,0),0)/1000);
+            }   
+
+            getGrid();
+
+            setInterval(getGrid,5000);
+
+            updateCd();
+
+            setInterval(updateCd,100);
+        </script>
+    </body>
+</html>
